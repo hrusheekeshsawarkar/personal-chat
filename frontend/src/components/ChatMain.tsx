@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Message } from '@/types/chat';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatMainProps {
   chatId: string | null;
@@ -82,7 +84,13 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
     setMessages(updatedMessages);
     setInput('');
     setIsLoading(true);
-    setCurrentStreamedContent('');
+
+    // Add assistant message immediately with empty content
+    setMessages(prev => [...prev, { 
+      role: 'assistant', 
+      content: '',
+      timestamp: new Date().toISOString() 
+    }]);
 
     try {
       const response = await fetch('http://localhost:8000/api/chat/send', {
@@ -101,13 +109,6 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
       const decoder = new TextDecoder();
       let accumulatedContent = '';
 
-      // Add a temporary message for streaming
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: '', 
-        timestamp: new Date().toISOString() 
-      }]);
-
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -124,12 +125,20 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
               const parsed = JSON.parse(data);
               if (parsed.content) {
                 accumulatedContent += parsed.content;
-                // Update the last message with the accumulated content
+                // Update the message content immediately with each chunk
                 setMessages(prev => {
                   const newMessages = [...prev];
-                  newMessages[newMessages.length - 1].content = accumulatedContent;
+                  const lastMessage = newMessages[newMessages.length - 1];
+                  if (lastMessage.role === 'assistant') {
+                    lastMessage.content = accumulatedContent;
+                  }
                   return newMessages;
                 });
+                
+                // Scroll to bottom with each update
+                setTimeout(() => {
+                  messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                }, 0);
               }
             } catch (e) {
               console.error('Error parsing SSE data:', e);
@@ -138,7 +147,7 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
         }
       }
 
-      // Store the complete chat session
+      // Store the complete chat session after streaming is done
       await storeChatSession([...updatedMessages, { 
         role: 'assistant', 
         content: accumulatedContent, 
@@ -147,9 +156,33 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
 
     } catch (error) {
       console.error('Error sending message:', error);
+      // Show error in the message area
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        if (lastMessage.role === 'assistant') {
+          lastMessage.content = 'Sorry, there was an error processing your request.';
+        }
+        return newMessages;
+      });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const formatMarkdown = (content: string) => {
+    // Convert ** to proper markdown bold
+    content = content.replace(/\*\*(.*?)\*\*/g, '**$1**');
+    
+    // Add support for bullet points if they don't start with proper markdown
+    content = content.split('\n').map(line => {
+      if (line.trim().startsWith('•')) {
+        return line.replace('•', '-');
+      }
+      return line;
+    }).join('\n');
+    
+    return content;
   };
 
   return (
@@ -170,7 +203,7 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 hover:pr-2 transition-all duration-200">
         {messages.map((message, index) => (
           <div
             key={index}
@@ -188,7 +221,24 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
                   : 'bg-[#2a2a2a] text-white'
               }`}
             >
-              {message.content}
+              {message.role === 'assistant' ? (
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm]}
+                  className="markdown-content"
+                  components={{
+                    p: ({node, ...props}) => <p className="mb-2" {...props} />,
+                    strong: ({node, ...props}) => <strong className="font-bold text-blue-300" {...props} />,
+                    em: ({node, ...props}) => <em className="italic text-gray-300" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2" {...props} />,
+                    ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2" {...props} />,
+                    li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                  }}
+                >
+                  {formatMarkdown(message.content)}
+                </ReactMarkdown>
+              ) : (
+                message.content
+              )}
               {isLoading && index === messages.length - 1 && (
                 <span className="inline-block animate-pulse">▊</span>
               )}
@@ -220,7 +270,7 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
                 isLoading ? 'bg-pink-400' : 'bg-pink-600 hover:bg-pink-700'
               } text-white px-4 py-1 rounded-lg focus:outline-none transition-colors`}
             >
-              {isLoading ? 'Sending...' : 'Send'}
+              {isLoading ? 'Thinking...' : 'Send'}
             </button>
           </div>
         </form>

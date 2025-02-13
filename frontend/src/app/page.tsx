@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import ChatSidebar from '@/components/ChatSidebar';
-import ChatMain from '@/components/ChatMain';
-import Settings from '@/components/Settings';
+import ChatSidebar from '../components/ChatSidebar';
+import ChatMain from '../components/ChatMain';
+import Settings from '../components/Settings';
 
 interface Agent {
   id: string;
