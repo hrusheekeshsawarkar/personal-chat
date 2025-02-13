@@ -12,9 +12,10 @@ interface Agent {
 interface ChatSidebarProps {
   activeChatId: string | null;
   onChatSelect: (chatId: string) => void;
+  onAgentSelect: (agent: { id: string; name: string }) => void;
 }
 
-export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarProps) {
+export default function ChatSidebar({ activeChatId, onChatSelect, onAgentSelect }: ChatSidebarProps) {
   const [agents] = useState<Agent[]>([
     {
       id: '1',
@@ -63,6 +64,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
           <div
             key={agent.id}
             className="p-4 hover:bg-[#2a2a2a] cursor-pointer"
+            onClick={() => onAgentSelect({ id: agent.id, name: agent.name })}
           >
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 rounded-full bg-[#2a2a2a] overflow-hidden">
