@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Message } from '@/types/chat';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import Loader from './Loader';
 
 interface ChatMainProps {
   chatId: string | null;
@@ -108,18 +109,28 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedContent = '';
+      let buffer = '';
 
       while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
+        const { done, value } = await reader.read();
         
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        if (done) {
+          break;
+        }
+
+        // Decode the chunk and add it to our buffer
+        buffer += decoder.decode(value, { stream: true });
         
+        // Process complete lines from the buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const data = line.slice(5);
-            if (data === '[DONE]') continue;
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              return;
+            }
             
             try {
               const parsed = JSON.parse(data);
@@ -222,25 +233,29 @@ export default function ChatMain({ chatId, selectedAgent }: ChatMainProps) {
               }`}
             >
               {message.role === 'assistant' ? (
-                <ReactMarkdown 
-                  remarkPlugins={[remarkGfm]}
-                  className="markdown-content"
-                  components={{
-                    p: ({node, ...props}) => <p className="mb-2" {...props} />,
-                    strong: ({node, ...props}) => <strong className="font-bold text-blue-300" {...props} />,
-                    em: ({node, ...props}) => <em className="italic text-gray-300" {...props} />,
-                    ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2" {...props} />,
-                    ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2" {...props} />,
-                    li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                  }}
-                >
-                  {formatMarkdown(message.content)}
-                </ReactMarkdown>
+                <>
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    className="markdown-content"
+                    components={{
+                      p: ({node, ...props}) => <p className="mb-2" {...props} />,
+                      strong: ({node, ...props}) => <strong className="font-bold text-blue-300" {...props} />,
+                      em: ({node, ...props}) => <em className="italic text-gray-300" {...props} />,
+                      ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2" {...props} />,
+                      ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2" {...props} />,
+                      li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                    }}
+                  >
+                    {formatMarkdown(message.content)}
+                  </ReactMarkdown>
+                  {isLoading && index === messages.length - 1 && message.content === '' && (
+                    <div className="flex justify-center mt-2">
+                      <Loader />
+                    </div>
+                  )}
+                </>
               ) : (
                 message.content
-              )}
-              {isLoading && index === messages.length - 1 && (
-                <span className="inline-block animate-pulse">▊</span>
               )}
             </div>
             {message.role === 'user' && (
